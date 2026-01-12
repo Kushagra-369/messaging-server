@@ -27,7 +27,7 @@ export interface IUser extends Document {
   ======================= */
   user: {
     isAccountActive: boolean;
-    UserOTP: string;
+    UserOTP: number;
     isOtpVerified: boolean;
     expireOTP: Date | null;
   };
