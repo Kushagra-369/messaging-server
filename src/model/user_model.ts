@@ -71,7 +71,7 @@ const UserSchema: Schema<IUser> = new Schema(
         default: true,
       },
       UserOTP: {
-        type: String,
+        type: Number,
         default: null,
         select: false,
       },
