@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Users from "../model/user_model";
-import jwt from "jsonwebtoken";
+import jwt, { JwtPayload } from "jsonwebtoken";
 
 export const create_users = async (req: Request, res: Response) => {
   try {
@@ -251,17 +251,30 @@ export const user_login = async (req: Request, res: Response) => {
     ======================= */
     const user = await Users.findOne({ email }).select("+password");
 
+    // 🔴 USER DELETED OR NOT FOUND
     if (!user) {
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
         message: "Invalid email or password",
+        next: "SIGNIN",
       });
     }
 
     /* =======================
-       OTP CHECK (CRITICAL)
+       ACCOUNT ACTIVE CHECK
     ======================= */
-    if (!user.user.isOtpVerified) {
+    if (!user.user?.isAccountActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is disabled. Please contact support.",
+        next: "SIGNIN",
+      });
+    }
+
+    /* =======================
+       OTP VERIFICATION CHECK
+    ======================= */
+    if (!user.user?.isOtpVerified) {
       return res.status(403).json({
         success: false,
         message: "Account not verified. Please verify OTP.",
@@ -282,7 +295,7 @@ export const user_login = async (req: Request, res: Response) => {
     }
 
     /* =======================
-       JWT ISSUE
+       JWT CONFIG CHECK
     ======================= */
     if (!process.env.JWT_User_SECRET_KEY) {
       return res.status(500).json({
@@ -291,6 +304,9 @@ export const user_login = async (req: Request, res: Response) => {
       });
     }
 
+    /* =======================
+       GENERATE JWT
+    ======================= */
     const token = jwt.sign(
       {
         id: user._id,
@@ -330,3 +346,71 @@ export const user_login = async (req: Request, res: Response) => {
     });
   }
 };
+
+interface UserJwtPayload extends JwtPayload {
+  id: string;
+  role?: string;
+}
+
+export const auth_me = async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({ success: false });
+    }
+
+    const parts = authHeader.split(" ");
+    if (parts.length !== 2 || parts[0] !== "Bearer") {
+      return res.status(401).json({ success: false });
+    }
+
+    const token = parts[1];
+    if (!token) {
+      return res.status(401).json({ success: false });
+    }
+
+    const rawSecret = process.env.JWT_User_SECRET_KEY;
+    if (!rawSecret) {
+      return res.status(500).json({
+        success: false,
+        message: "JWT secret not configured",
+      });
+    }
+
+    const decoded = jwt.verify(token, rawSecret);
+
+    if (
+      typeof decoded !== "object" ||
+      decoded === null ||
+      !("id" in decoded)
+    ) {
+      return res.status(401).json({ success: false });
+    }
+
+    const payload = decoded as UserJwtPayload;
+
+    const user = await Users.findById(payload.id);
+
+    // 🔑 ONLY THESE TWO CHECKS MATTER FOR SESSION
+    if (!user || !user.user?.isAccountActive) {
+      return res.status(401).json({ success: false });
+    }
+
+    // ❌ NO OTP CHECK HERE
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+      },
+    });
+
+  } catch {
+    return res.status(401).json({ success: false });
+  }
+};
+
+
