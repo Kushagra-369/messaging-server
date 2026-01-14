@@ -12,6 +12,12 @@ export const create_users = async (req: Request, res: Response) => {
       last_name,
       email,
       password,
+    }: {
+      username?: string;
+      first_name?: string;
+      last_name?: string;
+      email?: string;
+      password?: string;
     } = req.body;
 
     /* =======================
@@ -37,17 +43,17 @@ export const create_users = async (req: Request, res: Response) => {
       $or: [{ email }, { username }],
     });
 
-    /* =======================
-       USER EXISTS
-    ======================= */
     if (existingUser) {
-      // 🔴 CASE 1: OTP NOT VERIFIED → RESEND OTP
-      if (!existingUser.user.isOtpVerified) {
-        const otp = crypto.randomInt(100000, 999999); // ✅ number
+      if (!existingUser.user?.isOtpVerified) {
+        const otp = crypto.randomInt(100000, 999999);
         const otpExpire = new Date(Date.now() + 10 * 60 * 1000);
 
-        existingUser.user.UserOTP = otp;
-        existingUser.user.expireOTP = otpExpire;
+        existingUser.user = {
+          isAccountActive: existingUser.user?.isAccountActive ?? true,
+          UserOTP: otp,
+          isOtpVerified: false,
+          expireOTP: otpExpire,
+        };
 
         await existingUser.save();
 
@@ -55,7 +61,7 @@ export const create_users = async (req: Request, res: Response) => {
           success: true,
           message: "OTP resent. Please verify your account.",
           next: "VERIFY_OTP",
-          otp, // ⚠️ REMOVE in production
+          otp,
           user: {
             id: existingUser._id,
             email: existingUser.email,
@@ -63,7 +69,6 @@ export const create_users = async (req: Request, res: Response) => {
         });
       }
 
-      // 🔴 CASE 2: OTP VERIFIED → GO TO LOGIN
       return res.status(409).json({
         success: false,
         message: "Account already exists. Please login.",
@@ -76,7 +81,7 @@ export const create_users = async (req: Request, res: Response) => {
     ======================= */
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const otp = crypto.randomInt(100000, 999999); // ✅ number
+    const otp = crypto.randomInt(100000, 999999);
     const otpExpire = new Date(Date.now() + 10 * 60 * 1000);
 
     const user = await Users.create({
@@ -85,19 +90,58 @@ export const create_users = async (req: Request, res: Response) => {
       last_name,
       email,
       password: hashedPassword,
+      role: "user",
+
       user: {
         isAccountActive: true,
         UserOTP: otp,
         isOtpVerified: false,
         expireOTP: otpExpire,
       },
+
+      profileImg: {
+        public_id: "",
+        secure_url: "",
+      },
+
+      gender: "",
+      bio: "",
+
+      emailVerification: {
+        newEmail: "",
+        otp: "",
+        expire: null,
+      },
+
+      contacts: [],
+      blockedUsers: [],
+
+      isOnline: false,
+      isTyping: false,
+      status: "offline",
+
+      deviceInfo: {
+        device: "",
+        os: "",
+        browser: "",
+      },
+
+      refreshToken: "",
+      socketId: "",
+
+      settings: {
+        notifications: true,
+        readReceipts: true,
+        lastSeenVisibility: "everyone",
+      },
     });
+
 
     return res.status(201).json({
       success: true,
       message: "User created. OTP sent for verification.",
       next: "VERIFY_OTP",
-      otp, // ⚠️ REMOVE in production
+      otp,
       user: {
         id: user._id,
         email: user.email,
@@ -112,7 +156,6 @@ export const create_users = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 export const verify_otp = async (req: Request, res: Response) => {
   try {
