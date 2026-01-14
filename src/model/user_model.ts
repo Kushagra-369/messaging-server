@@ -159,9 +159,7 @@ const UserSchema: Schema<IUser> = new Schema(
       browser: { type: String },
     },
 
-    /* =======================
-       SETTINGS
-    ======================= */
+    
     settings: {
       notifications: {
         type: Boolean,
