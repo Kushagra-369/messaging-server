@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import Users from "../model/user_model";
+import mongoose from "mongoose";
 import jwt, { JwtPayload } from "jsonwebtoken";
 
 export const create_users = async (req: Request, res: Response) => {
@@ -456,4 +457,119 @@ export const auth_me = async (req: Request, res: Response) => {
   }
 };
 
+export const user_profile_update = async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.id
 
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user id",
+      })
+    }
+
+
+    const objectUserId = new mongoose.Types.ObjectId(userId)
+
+    // Allowed fields
+    const { name, username, email, gender, bio } = req.body
+
+    const updateData: Partial<{
+      name: string
+      username: string
+      email: string
+      gender: string
+      bio: string
+    }> = {}
+
+    if (name) updateData.name = name
+    if (username) updateData.username = username
+    if (email) updateData.email = email
+    if (gender) updateData.gender = gender
+    if (bio) updateData.bio = bio
+
+    // Username uniqueness check
+    if (username) {
+      const existingUsername = await Users.exists({
+        username,
+        _id: { $ne: objectUserId },
+      })
+
+      if (existingUsername) {
+        return res.status(400).json({
+          success: false,
+          message: "Username already taken",
+        })
+      }
+    }
+
+    // Email uniqueness check
+    if (email) {
+      const existingEmail = await Users.exists({
+        email,
+        _id: { $ne: objectUserId },
+      })
+
+      if (existingEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already in use",
+        })
+      }
+    }
+
+    const user = await Users.findByIdAndUpdate(
+      objectUserId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select("-password")
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user,
+    })
+  } catch (error) {
+    console.error("User profile update error:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    })
+  }
+}
+
+export const get_user_by_id = async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.id
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false, 
+        message: "Invalid user id",
+      })
+    }
+    const user = await Users.findById(userId).select("-password")
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found",
+      })
+    }
+    return res.status(200).json({
+      success: true,
+      user,
+    })
+  } catch (error) {
+    console.error("Get user by id error:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    })
+  }
+}
