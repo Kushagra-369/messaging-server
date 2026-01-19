@@ -573,3 +573,50 @@ export const get_user_by_id = async (req: Request, res: Response) => {
     })
   }
 }
+
+export const find_user_by_username = async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: "Username is required",
+      })
+    }
+
+    const user = await Users.findOne(
+      { username: username.toLowerCase() },
+      {
+        _id: 1,
+        username: 1,
+        first_name: 1,
+        last_name: 1,
+        bio: 1,
+        gender: 1,
+        profileImg: 1,
+        status: 1,
+        isOnline: 1,
+      }
+    ).lean()
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      })
+    }
+
+    return res.status(200).json({
+      success: true,
+      user,
+    })
+  } catch (error) {
+    console.error("Find user by username error:", error)
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    })
+  }
+}
+

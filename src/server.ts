@@ -1,10 +1,9 @@
-import express from "express";
 import dotenv from "dotenv";
+dotenv.config();
+import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
 import router from "./routes/routes";
-
-dotenv.config();
 
 const app = express();
 
@@ -12,7 +11,7 @@ app.use(express.json());
 app.use(cors());
 
 const mongoURL = process.env.MONGO_URI;
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 
 if (!mongoURL) {
   console.error("❌ MONGO_URI not found in environment variables");
@@ -27,8 +26,8 @@ mongoose
     process.exit(1);
   });
 
-// ✅ health check
-app.get("/", (req, res) => {
+// health check
+app.get("/", (_req, res) => {
   res.send("Server is running");
 });
 
