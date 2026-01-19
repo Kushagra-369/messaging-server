@@ -87,3 +87,11 @@ export interface IUser extends Document {
   updatedAt: Date;
 }
  
+export interface IMessages extends Document {
+  sender: Types.ObjectId;
+  receiver: Types.ObjectId;
+  content: string;
+  isRead: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
