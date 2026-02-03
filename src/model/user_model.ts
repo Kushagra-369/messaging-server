@@ -3,110 +3,51 @@ import { IUser } from "../interface/all_interface";
 
 const UserSchema: Schema<IUser> = new Schema(
   {
-    /* =======================
-       BASIC PROFILE
-    ======================= */
-    username: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      lowercase: true,
-    },
 
-    first_name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    username: { type: String, required: true, unique: true, trim: true, lowercase: true, },
 
-    last_name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    first_name: { type: String, required: true, trim: true, },
 
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-      index: true,
-    },
+    last_name: { type: String, required: true, trim: true, },
 
-    password: {
-      type: String,
-      required: true,
-      select: false,
-    },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true, },
+    country_code: { type: String, required: true, enum: ['+1', '+44', '+91', '+92', '+971'], match: /^\+\d{1,4}$/ },
+    mobile_No: { type: String, required: false, unique: true, trim: true },
+    avatar: { type: String, default: "https://via.placeholder.com/150" },
+
+    password: { type: String, required: true, select: false, },
 
     profileImg: {
-      public_id: { type: String },
-      secure_url: { type: String },
-    },
-
-    gender: {
-      type: String,
-      enum: ["male", "female", "other", ""],
-    },
-
-    bio: {
-      type: String,
-      maxlength: 300,
-    },
-
-    role: {
-      type: String,
-      enum: ["admin", "user"],
-      default: "user",
-    },
-
-    /* =======================
-       ACCOUNT / OTP STATUS
-    ======================= */
-    user: {
-      isAccountActive: {
-        type: Boolean,
-        default: true,
+      public_id: {
+        type: String,
       },
-      UserOTP: {
-        type: Number,
-        default: null,
-        select: false,
-      },
-      isOtpVerified: {
-        type: Boolean,
-        default: false,
-      },
-      expireOTP: {
-        type: Date,
-        default: null,
+      secure_url: {
+        type: String,
+        default: "https://via.placeholder.com/150",
       },
     },
 
-    emailVerification: {
-      newEmail: { type: String, default: null },
-      otp: { type: String, default: null, select: false },
-      expire: { type: Date, default: null },
+    gender: { type: String, enum: ["male", "female", "other", ""], },
+
+    bio: { type: String, maxlength: 300, default: "I am using this app" },
+
+    role: { type: String, enum: ["admin", "user"], default: "user", },
+
+    verification: {
+      isEmailVerified: { type: Boolean, default: false },
+      isMobileVerified: { type: Boolean, default: false },
+      isDelete: { type: Boolean, default: false },
+      isVerify: { type: Boolean, default: false },
+      emailotp: { type: String },
+      mobileotp: { type: String },
+      otpExpires: { type: Date },
+      wrongAttempts: { type: Number, default: 0 },
+      lockUntil: { type: Date, default: null },
     },
 
-    /* =======================
-       MESSAGING / SOCIAL
-    ======================= */
-    contacts: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
+    contacts: [{ type: Schema.Types.ObjectId, ref: "User", },],
 
-    blockedUsers: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "User",
-      },
-    ],
+    blockedUsers: [{ type: Schema.Types.ObjectId, ref: "User", },],
 
     isOnline: {
       type: Boolean,
@@ -129,52 +70,11 @@ const UserSchema: Schema<IUser> = new Schema(
       default: "offline",
     },
 
-    /* =======================
-       AUTH & SECURITY
-    ======================= */
-    refreshToken: {
-      type: String,
-      select: false,
+    activeSession: {
+      socketId: { type: String, default: null },
+      lastLogin: { type: Date, default: Date.now }
     },
 
-    passwordResetToken: {
-      type: String,
-      select: false,
-    },
-
-    passwordResetExpires: {
-      type: Date,
-    },
-
-    /* =======================
-       SOCKET / DEVICE
-    ======================= */
-    socketId: {
-      type: String,
-    },
-
-    deviceInfo: {
-      device: { type: String },
-      os: { type: String },
-      browser: { type: String },
-    },
-
-    
-    settings: {
-      notifications: {
-        type: Boolean,
-        default: true,
-      },
-      readReceipts: {
-        type: Boolean,
-        default: true,
-      },
-      lastSeenVisibility: {
-        type: String,
-        enum: ["everyone", "contacts", "nobody"],
-        default: "everyone",
-      },
-    },
   },
   { timestamps: true }
 );

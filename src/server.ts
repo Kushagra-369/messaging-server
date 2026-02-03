@@ -11,12 +11,12 @@ app.use(express.json());
 app.use(cors());
 
 const mongoURL = process.env.MONGO_URI;
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 1928;
 
 if (!mongoURL) {
   console.error("❌ MONGO_URI not found in environment variables");
   process.exit(1);
-}
+} 
 
 mongoose
   .connect(mongoURL)
