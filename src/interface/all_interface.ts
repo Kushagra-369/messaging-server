@@ -1,97 +1,65 @@
 import { Document, Types } from "mongoose";
 
 export interface IUser extends Document {
-  _id: Types.ObjectId;
+   _id: Types.ObjectId;
 
-  /* =======================
-     BASIC PROFILE
-  ======================= */
-  username: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  password: string;
+   /* =======================
+      BASIC PROFILE
+   ======================= */
+   username: string;
+   first_name: string;
+   last_name: string;
+   email: string;
+   password: string;
+   country_code: string;
+   mobile_No?: string;
+   avatar?: string;
+   profileImg?: {
+      public_id?: string;
+      secure_url?: string;
+   };
 
-  profileImg?: {
-    public_id: string;
-    secure_url: string;
-  };
+   gender?: "male" | "female" | "other" | "";
+   bio?: string;
 
-  gender: "male" | "female" | "other";
-  bio?: string;
+   role: "admin" | "user";
 
-  role: "admin" | "user";
+   /* =======================
+      ACCOUNT / OTP STATUS
+   ======================= */
+   verification: {
+      isEmailVerified: boolean,
+      isMobileVerified: boolean,
+      isDelete: boolean,
+      isVerify: boolean,
+      emailotp: string,
+      mobileotp: string,
+      userOtp: string
+   },
 
-  /* =======================
-     ACCOUNT / OTP STATUS
-  ======================= */
-  user: {
-    isAccountActive: boolean;
-    UserOTP: number;
-    isOtpVerified: boolean;
-    expireOTP: Date | null;
-  };
+   /* =======================
+      MESSAGING / SOCIAL
+   ======================= */
+   contacts: Types.ObjectId[];
+   blockedUsers: Types.ObjectId[];
 
-  emailVerification: {
-    newEmail: string | null;
-    otp: string | null;
-    expire: Date | null;
-  };
+   isOnline: boolean;
+   lastSeen: Date;
+   isTyping: boolean;
 
-  /* =======================
-     MESSAGING / SOCIAL
-  ======================= */
-  contacts: Types.ObjectId[];
-  blockedUsers: Types.ObjectId[];
+   status: "online" | "offline" | "away" | "busy";
 
-  lastSeen: Date;
-  isOnline: boolean;
-  isTyping?: boolean;
+   /* =======================
+      SOCKET / DEVICE
+   ======================= */
+   activeSession?: {
+      socketId?: string | null;
+      lastLogin: Date;
+   };
 
-  status?: "online" | "offline" | "away" | "busy";
-
-  /* =======================
-     AUTH & SECURITY
-  ======================= */
-  refreshToken?: string;
-
-  emailVerificationToken?: string;
-  emailVerificationExpires?: Date;
-
-  passwordResetToken?: string;
-  passwordResetExpires?: Date;
-
-  /* =======================
-     SOCKET / DEVICE
-  ======================= */
-  socketId?: string;
-  deviceInfo?: {
-    device: string;
-    os: string;
-    browser: string;
-  };
-
-  /* =======================
-     SETTINGS
-  ======================= */
-  settings?: {
-    notifications?: boolean;
-    readReceipts?: boolean;
-    lastSeenVisibility?: "everyone" | "contacts" | "nobody";
-  };
-
-  /* =======================
-     TIMESTAMPS
-  ======================= */
-  createdAt: Date;
-  updatedAt: Date;
-}
- 
-export interface IMessages extends Document {
-  sender: Types.ObjectId;
-  receiver: Types.ObjectId;
-  content: string;
-  isRead: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+   /* =======================
+      TIMESTAMPS
+   ======================= */
+   createdAt: Date;
+   updatedAt: Date;
 }
