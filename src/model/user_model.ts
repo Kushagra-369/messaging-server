@@ -32,15 +32,14 @@ const UserSchema: Schema<IUser> = new Schema(
     bio: { type: String, maxlength: 300, default: "I am using this app" },
 
     role: { type: String, enum: ["admin", "user"], default: "user", },
-
     verification: {
       isEmailVerified: { type: Boolean, default: false },
       isMobileVerified: { type: Boolean, default: false },
       isDelete: { type: Boolean, default: false },
       isVerify: { type: Boolean, default: false },
-      emailotp: { type: String },
-      mobileotp: { type: String },
-      otpExpires: { type: Date },
+      emailotp: { type: Number },
+      mobileotp: { type: Number },
+      otpExpires: { type: Number, default: null },
       wrongAttempts: { type: Number, default: 0 },
       lockUntil: { type: Date, default: null },
     },

@@ -1,3 +1,4 @@
+
 const cloudinary = require('cloudinary').v2;
 const sharp = require('sharp');
 require('dotenv').config();
@@ -11,6 +12,7 @@ cloudinary.config({
 
 export const upload_project_img = async (img: Buffer | string) => {
     try {
+       
         const optimizedBuffer = await sharp(img)
             .resize(1080, 720, { fit: "inside", withoutEnlargement: true })
             .jpeg({ quality: 80, mozjpeg: true })
@@ -20,8 +22,9 @@ export const upload_project_img = async (img: Buffer | string) => {
             `data:image/jpeg;base64,${optimizedBuffer.toString("base64")}`,
             { resource_type: "auto", quality: "auto", folder: "travelly/profile" }
         );
+       
 
-        return uploadResult;
+        return { public_id: uploadResult.public_id, secure_url: uploadResult.secure_url };
     } catch (error) {
         console.error("Error during image optimization or upload:", error);
         throw error;
@@ -35,4 +38,4 @@ export const deleteImg = async (publicId: string) => {
         console.error("Error deleting image:", error);
         throw error;
     }
-};
+}; 

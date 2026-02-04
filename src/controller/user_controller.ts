@@ -5,81 +5,129 @@ import { NewUserOtp } from '../mobile/otp';
 import crypto from 'crypto';
 import { otpVerificationUserMessage, transporter } from "../mail/user_mail";
 import { upload_project_img, deleteImg } from "../image/upload";
+import bcrypt from "bcrypt";
 
 export const create_user = async (req: Request, res: Response) => {
     try {
-        const data = req.body;
 
-        const { username, first_name, last_name, email, country_code, password, mobile_No, gender, } = data;
-        const file = req.file
+        const { username, first_name, last_name, email, country_code, password, mobile_No, gender } = req.body;
+        const file = req.file;
 
         const otp = crypto.randomInt(1000, 10000);
+        const otpExpires = Date.now() + 5 * 60 * 1000;
 
-        const userExists = await User.findOne({ email });
+        const userByUsername = await User.findOne({ username });
+        if (userByUsername && (userByUsername.email !== email || userByUsername.mobile_No !== mobile_No)) {
+            return res.status(400).json({ message: "Username already taken" });
+        }
+
+        const userExists = await User.findOne({
+            $or: [{ email }, { mobile_No }]
+        }).select("+password");
+
+
+        console.log(userExists);
 
         if (userExists) {
-            const { isDelete, isVerify } = userExists?.verification
+
+            if (userExists.username !== username) {
+                return res.status(400).json({ message: "Wrong Username" });
+            }
+
+            const { isDelete, isVerify } = userExists.verification;
+            console.log(username, userExists.username);
+
             if (isDelete) return res.status(400).json({ message: 'User is deleted!' });
             if (isVerify) return res.status(400).json({ message: 'User is already verified!' });
+            let isPasswordCorrect = false;
 
+            if (userExists.password.startsWith("$2")) {
+                isPasswordCorrect = await bcrypt.compare(password, userExists.password);
+            } else {
+                isPasswordCorrect = password === userExists.password;
 
-            if (userExists.mobile_No) {
-                const check = await NewUserOtp(userExists.first_name, userExists.last_name, mobile_No, otp)
-                console.log(check)
+                if (isPasswordCorrect) {
+                    userExists.password = await bcrypt.hash(password, 10);
+                    await userExists.save();
+                }
+            }
+
+            if (!isPasswordCorrect) {
+                return res.status(401).json({ message: "Wrong password" });
             }
 
 
-            // Send Mail Otp
-            if (email) {
-                await transporter.sendMail({
-                    from: `"Messaging App ✈️" <${process.env.NodeMailerUser}>`,
-                    to: email,
-                    subject: "Messaging App Verification Code",
-                    text: otpVerificationUserMessage(
-                        userExists.first_name,
-                        otp.toString()
-                    ),
-                });
+            userExists.first_name = first_name;
+            userExists.last_name = last_name;
+            userExists.country_code = country_code;
+            userExists.gender = gender;
+            userExists.verification.emailotp = otp;
+            userExists.verification.mobileotp = otp;
+
+            if (file) {
+                const profileImg = await upload_project_img(file.path);
+                userExists.profileImg = profileImg;
             }
 
-            if (mobile_No) {
-                await NewUserOtp(first_name, last_name, mobile_No, otp);
-            }
+            await userExists.save();
 
-            res.status(201).json({
+            // if (userExists.mobile_No) { 
+            //   const check = await NewUserOtp(userExists.first_name, userExists.last_name,userExists.mobile_No, otp)
+            //   console.log(check)
+            // } 
+
+            otpVerificationUserMessage(userExists.first_name, userExists.email, otp);
+
+            return res.status(200).json({
                 message: mobile_No
-                    ? "User created & OTP sent to email + mobile"
-                    : "User created & OTP sent to email",
+                    ? "User updated & OTP sent to email + mobile"
+                    : "User updated & OTP sent to email",
             });
-
         }
 
-        let imageData: any = null;
+        let profileImg: any = null;
 
         if (file) {
-            imageData = await upload_project_img(file.path);
+            profileImg = await upload_project_img(file.path);
+        }
+        console.log(profileImg);
+
+        if (mobile_No) {
+            // await NewUserOtp(first_name, last_name, mobile_No, otp);
         }
 
+        const verification = { emailotp: otp, mobileotp: otp, otpExpires };
+        const hashedPassword = await bcrypt.hash(password, 10);
 
         const user = await User.create({
-            username, first_name, last_name, email, country_code, password, mobile_No, gender, ...(imageData && {profileImg: {public_id: imageData.public_id,secure_url: imageData.secure_url,},}),
-            verification: {
-                ...(email && { emailotp: otp.toString() }),
-                ...(mobile_No && { mobileotp: otp.toString() }),
-                isVerify: false,
-                isDelete: false,
-            }
-
+            username,
+            first_name,
+            last_name,
+            email,
+            country_code,
+            password: hashedPassword,
+            mobile_No,
+            gender,
+            profileImg,
+            verification
         });
-        
+
         // if(mobile_No){
-        //   const check = await NewUserOtp(userExists.first_name, userExists.last_name, mobile_No, otp)
+        //   const check = await NewUserOtp(userExists.first_name, userExists.last_name,mobile_No, otp)
         //   console.log(check)
         // }
 
-        res.status(201).json(user);
+        res.status(201).json({
+            status: true,
+            message: mobile_No
+                ? "User created & OTP sent to email + mobile"
+                : "User created & OTP sent to email",
+            user
+        });
+
+    } catch (err: unknown) {
+        return errorHandler(err, res);
     }
-    catch (err: unknown) { return errorHandler(err, res); }
 };
 
 
