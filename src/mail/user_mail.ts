@@ -3,9 +3,9 @@ const dotenv = require("dotenv")
 dotenv.config()
 
 export const transporter = nodemailer.createTransport({
-  host: "smtp.ethereal.email",
+  host: "smtp.gmail.com",
   port: 465,
-  secure: false, 
+  secure: true, 
   service: "gmail",
   auth: { 
     user: process.env.NodeMailerUser, 
@@ -13,17 +13,28 @@ export const transporter = nodemailer.createTransport({
   },
 });
 
-export const otpVerificationUserMessage = (
-  name: string,
-  otp: string
-): string => {
-  return `Hi ${name},
+export const otpVerificationUserMessage = async (name: String, email: String, otp: Number) => {
+    try {
+        const info = await transporter.sendMail({
+            from: `"Messaging App" <${process.env.NodeMailerUser}>`,
+            to: email,
+            subject: "Your OTP Verification Code",
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px;">
+                    <h2>Hello ${name},</h2>
+                    <p>Your OTP for verification is:</p>
+                    <h1 style="color: #4CAF50;">${otp}</h1>
+                    <p>This OTP is valid for 5 minutes.</p>
+                    <br/>
+                    <p>Thanks,<br/>Hartron Team</p>
+                </div>
+            `,
+        });
 
-Your messaging verification code is: ${otp}
+        console.log("User confirmation email sent:", info.messageId);
+        return true;
 
-⏳ Valid for 10 minutes.
-❗ Do not share this code with anyone.
-
-– Messaging App ✈️`;
+    }
+    catch (error) { console.log("Mail error:", error); }
 };
 
