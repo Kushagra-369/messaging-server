@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { otpVerificationUserMessage, transporter } from "../mail/user_mail";
 import { upload_project_img, deleteImg } from "../image/upload";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 export const create_user = async (req: Request, res: Response) => {
     try {
@@ -87,6 +88,9 @@ export const user_otp_verification = async (req: Request, res: Response) => {
         const { userId } = req.params;
         const { otp } = req.body;
 
+        console.log("OTP from body:", otp);
+
+
         const user = await User.findById(userId);
 
         if (!user) { return res.status(404).json({ message: 'User not found!' }); }
@@ -106,10 +110,25 @@ export const user_otp_verification = async (req: Request, res: Response) => {
                 user.verification.lockUntil = new Date(Date.now() + (lockTime ?? 0));
             }
 
-
             await user.save();
-            return res.status(400).json({ message: 'Invalid OTP!' });
+            let attemptsLeft = 3 - (user.verification.wrongAttempts % 3);
+            if (attemptsLeft === 3) attemptsLeft = 0;
+
+            let message = "Invalid OTP!";
+            if (attemptsLeft > 0) {
+                message += ` ${attemptsLeft} attempts left`;
+            }
+
+            return res.status(400).json({ message });
         }
+
+        user.verification.isVerify = true;
+        user.verification.isEmailVerified = true;
+        user.verification.isMobileVerified = true;
+        user.verification.wrongAttempts = 0;
+        user.verification.lockUntil = null;
+
+        await user.save();
 
         res.status(200).json({ message: 'OTP verified successfully!' });
 
@@ -118,22 +137,56 @@ export const user_otp_verification = async (req: Request, res: Response) => {
     catch (err) { return errorHandler(err, res); }
 }
 
-
-
-
 export const user_login = async (req: Request, res: Response) => {
     try {
-        const { email, password } = req.body;
-        const user = await User.findOne({ email: email });
+        const { email, password, username, mobile_No } = req.body;
+
+        if (!password) {
+            return res.status(400).json({ message: "Password is required!" });
+        }
+
+        // 👤 atleast one identifier compulsory
+        if (!email && !username && !mobile_No) {
+            return res.status(400).json({
+                message: "Email, username or mobile number is required!"
+            });
+        }
+
+        const orConditions: any[] = [];
+
+        if (email) orConditions.push({ email });
+        if (username) orConditions.push({ username });
+        if (mobile_No) orConditions.push({ mobile_No });
+
+        const user = await User.findOne({
+            $or: orConditions
+        }).select("+password");
 
         if (!user) {
             return res.status(404).json({ message: 'User not found!' });
         }
+        if (!user.verification.isVerify) {
+            return res.status(400).json({ message: 'User is not verified!' });
+        }
+        if (!user.verification.isEmailVerified && !user.verification.isMobileVerified) {
+            return res.status(400).json({ message: 'Email is not verified!' });
+        }
+        if (user.verification.isDelete) {
+            return res.status(400).json({ message: 'User is deleted!' });
+        }
+
+
+
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
             return res.status(400).json({ message: 'Invalid password!' });
         }
-        res.status(200).json({ message: 'Login successful!', user });
+
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_User_SECRET_KEY as string, { expiresIn: '7d' });
+
+       
+
+        res.status(200).json({ message: 'Login successful!', user, token });
     }
 
     catch (err) { return errorHandler(err, res); }
