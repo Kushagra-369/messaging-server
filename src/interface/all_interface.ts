@@ -32,10 +32,13 @@ export interface IUser extends Document {
       isMobileVerified: boolean,
       isDelete: boolean,
       isVerify: boolean,
-      emailotp: Number,
+      emailotp: number,
       mobileotp: Number,
-      userOtp: string
-   },
+      userOtp: string,
+      otpExpires: number ,
+      wrongAttempts: number,
+      lockUntil: Date | null,
+      },
 
    /* =======================
       MESSAGING / SOCIAL
