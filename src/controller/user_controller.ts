@@ -9,80 +9,42 @@ import bcrypt from "bcrypt";
 
 export const create_user = async (req: Request, res: Response) => {
     try {
+        const data = req.body;
 
-        const { username, first_name, last_name, email, country_code, password, mobile_No, gender } = req.body;
-        const file = req.file;
+        const { username, first_name, last_name, email, country_code, password, mobile_No, gender, } = data;
+        const file = req.file
 
         const otp = crypto.randomInt(1000, 10000);
-        const otpExpires = Date.now() + 5 * 60 * 1000;
 
-        const userByUsername = await User.findOne({ username });
-        if (userByUsername && (userByUsername.email !== email || userByUsername.mobile_No !== mobile_No)) {
-            return res.status(400).json({ message: "Username already taken" });
-        }
+        const userExists = await User.findOneAndUpdate({
+            $or: [
+                { email: email },
+                { username: username },
+                { mobile_No: mobile_No }]
 
-        const userExists = await User.findOne({
-            $or: [{ email }, { mobile_No }]
-        }).select("+password");
+        });
 
-
-        console.log(userExists);
 
         if (userExists) {
-
-            if (userExists.username !== username) {
-                return res.status(400).json({ message: "Wrong Username" });
-            }
-
-            const { isDelete, isVerify } = userExists.verification;
-            console.log(username, userExists.username);
-
+            const { isDelete, isVerify } = userExists?.verification
             if (isDelete) return res.status(400).json({ message: 'User is deleted!' });
             if (isVerify) return res.status(400).json({ message: 'User is already verified!' });
-            let isPasswordCorrect = false;
 
-            if (userExists.password.startsWith("$2")) {
-                isPasswordCorrect = await bcrypt.compare(password, userExists.password);
-            } else {
-                isPasswordCorrect = password === userExists.password;
-
-                if (isPasswordCorrect) {
-                    userExists.password = await bcrypt.hash(password, 10);
-                    await userExists.save();
-                }
-            }
-
-            if (!isPasswordCorrect) {
-                return res.status(401).json({ message: "Wrong password" });
-            }
-
-
-            userExists.first_name = first_name;
-            userExists.last_name = last_name;
-            userExists.country_code = country_code;
-            userExists.gender = gender;
-            userExists.verification.emailotp = otp;
-            userExists.verification.mobileotp = otp;
-
-            if (file) {
-                const profileImg = await upload_project_img(file.path);
-                userExists.profileImg = profileImg;
-            }
-
-            await userExists.save();
 
             // if (userExists.mobile_No) { 
             //   const check = await NewUserOtp(userExists.first_name, userExists.last_name,userExists.mobile_No, otp)
             //   console.log(check)
             // } 
+            if (userExists.mobile_No) {
+                return res.status(201).json({ message: "resend otp to mobile", });
+            }
 
-            otpVerificationUserMessage(userExists.first_name, userExists.email, otp);
-
-            return res.status(200).json({
-                message: mobile_No
-                    ? "User updated & OTP sent to email + mobile"
-                    : "User updated & OTP sent to email",
+            otpVerificationUserMessage(userExists.first_name, userExists.email, otp)
+            return res.status(201).json({
+                message: mobile_No ? "User created & OTP sent to email + mobile" :
+                    "User created & OTP sent to email",
             });
+
         }
 
         let profileImg: any = null;
@@ -90,26 +52,19 @@ export const create_user = async (req: Request, res: Response) => {
         if (file) {
             profileImg = await upload_project_img(file.path);
         }
-        console.log(profileImg);
+        console.log(profileImg)
 
         if (mobile_No) {
             // await NewUserOtp(first_name, last_name, mobile_No, otp);
         }
 
-        const verification = { emailotp: otp, mobileotp: otp, otpExpires };
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const bcryptPassword = await bcrypt.hash(password, 10);
 
+        const otpExpires = Date.now() + 5 * 60 * 1000;
+        const verification = { emailotp: otp, mobileotp: otp, otpExpires: otpExpires }
         const user = await User.create({
-            username,
-            first_name,
-            last_name,
-            email,
-            country_code,
-            password: hashedPassword,
-            mobile_No,
-            gender,
-            profileImg,
-            verification
+            username, first_name, last_name, email, country_code, password: bcryptPassword,
+            mobile_No, gender, profileImg, verification
         });
 
         // if(mobile_No){
@@ -118,28 +73,94 @@ export const create_user = async (req: Request, res: Response) => {
         // }
 
         res.status(201).json({
-            status: true,
-            message: mobile_No
-                ? "User created & OTP sent to email + mobile"
-                : "User created & OTP sent to email",
-            user
+            status: true, message: mobile_No ?
+                "User created & OTP sent to email + mobile" : "User created & OTP sent to email", user
         });
-
-    } catch (err: unknown) {
-        return errorHandler(err, res);
     }
+    catch (err: unknown) { return errorHandler(err, res); }
 };
 
+// above create_user if user send password and exiting mail or mobile number updated password
 
-export const get_user = async (req: Request, res: Response) => {
+export const user_otp_verification = async (req: Request, res: Response) => {
     try {
-        const userId = req.params.id;
+        const { userId } = req.params;
+        const { otp } = req.body;
+
         const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ error: "User not found" });
+
+        if (!user) { return res.status(404).json({ message: 'User not found!' }); }
+
+        const lockDurations = [5 * 60 * 1000, 15 * 60 * 1000, 60 * 60 * 1000, 3 * 60 * 60 * 1000, 24 * 60 * 60 * 1000, 7 * 24 * 60 * 60 * 1000, 30 * 24 * 60 * 60 * 1000, 365 * 24 * 60 * 60 * 1000] // 5 min, 15 min,  1 hr, 3 hr
+
+        if (user.verification.lockUntil && user.verification.lockUntil > new Date()) {
+            const remainingTime = Math.ceil((user.verification.lockUntil.getTime() - Date.now()) / 1000);
+            return res.status(403).json({ message: `Account is locked. Try again in ${remainingTime} seconds.` });
         }
-        res.status(200).json(user);
-    } catch (error) {
-        res.status(500).json({ error: "Failed to retrieve user" });
+        if (otp !== user.verification.emailotp && otp !== user.verification.mobileotp) {
+            user.verification.wrongAttempts += 1;
+
+            if (user.verification.wrongAttempts % 3 === 0) {
+                const lockTime = lockDurations[Math.min(Math.floor(user.verification.wrongAttempts / 3) - 1, lockDurations.length - 1)] ?? lockDurations[lockDurations.length - 1];
+
+                user.verification.lockUntil = new Date(Date.now() + (lockTime ?? 0));
+            }
+
+
+            await user.save();
+            return res.status(400).json({ message: 'Invalid OTP!' });
+        }
+
+        res.status(200).json({ message: 'OTP verified successfully!' });
+
     }
-};
+
+    catch (err) { return errorHandler(err, res); }
+}
+
+
+
+
+export const user_login = async (req: Request, res: Response) => {
+    try {
+        const { email, password } = req.body;
+        const user = await User.findOne({ email: email });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found!' });
+        }
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(400).json({ message: 'Invalid password!' });
+        }
+        res.status(200).json({ message: 'Login successful!', user });
+    }
+
+    catch (err) { return errorHandler(err, res); }
+}
+
+export const user_login_with_goolge = async (req: Request, res: Response) => {
+    try {
+
+    }
+
+    catch (err) { return errorHandler(err, res); }
+}
+
+export const user_login_with_github = async (req: Request, res: Response) => {
+    try {
+
+    }
+
+    catch (err) { return errorHandler(err, res); }
+}
+
+export const user_forget_password = async (req: Request, res: Response) => {
+    try {
+
+    }
+
+    catch (err) { return errorHandler(err, res); }
+}
+// send mail link reset pasword click link open website page change password , link expiry date if
+// link expire not open website page change password show error link expire

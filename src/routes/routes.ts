@@ -3,11 +3,11 @@ import multer from "multer";
 
 const router = express.Router();
 
-import { create_user, get_user } from "../controller/user_controller";
+import { create_user,  user_otp_verification } from "../controller/user_controller";
 
 const upload = multer();
 
 router.post("/create_user", upload.none(), create_user);
-router.get("/users/:id", get_user);
+router.post("/verify_otp/:userId", user_otp_verification);
 
 export default router;
