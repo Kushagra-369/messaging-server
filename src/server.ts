@@ -13,7 +13,7 @@ app.use(cors());
 const mongoURL = process.env.MONGO_URI;
 const PORT = process.env.PORT || 1928;
 
-if (!mongoURL) {
+if (!mongoURL) { 
   console.error("❌ MONGO_URI not found in environment variables");
   process.exit(1);
 } 
@@ -29,7 +29,7 @@ mongoose
 // health check
 app.get("/", (_req, res) => {
   res.send("Server is running");
-});
+}); 
 
 app.use("/", router);
 

@@ -12,7 +12,7 @@ const UserSchema: Schema<IUser> = new Schema(
 
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true, },
     country_code: { type: String, required: true, enum: ['+1', '+44', '+91', '+92', '+971'], match: /^\+\d{1,4}$/ },
-    mobile_No: { type: String, required: false, unique: true, trim: true },
+    mobile_No: { type: String, required: false, unique: true,  sparse: true,  trim: true },
     avatar: { type: String, default: "https://via.placeholder.com/150" },
 
     password: { type: String, required: true, select: false, },

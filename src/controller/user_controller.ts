@@ -7,79 +7,119 @@ import { otpVerificationUserMessage, transporter } from "../mail/user_mail";
 import { upload_project_img, deleteImg } from "../image/upload";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import { Profile } from "passport-google-oauth20";
 
 export const create_user = async (req: Request, res: Response) => {
     try {
-        const data = req.body;
+        const {
+            username,
+            first_name,
+            last_name,
+            email,
+            country_code,
+            password,
+            mobile_No,
+            gender,
+        } = req.body;
 
-        const { username, first_name, last_name, email, country_code, password, mobile_No, gender, } = data;
-        const file = req.file
+        const file = req.file;
 
+        // 🔥 generate OTP
         const otp = crypto.randomInt(1000, 10000);
+        const otpExpires = Date.now() + 5 * 60 * 1000;
 
-        const userExists = await User.findOneAndUpdate({
-            $or: [
-                { email: email },
-                { username: username },
-                { mobile_No: mobile_No }]
-
-        });
+        // 🔍 check user exists
+        const userExists = await User.findOne({ email });
 
 
+        /* ===================================================
+            CASE 1️⃣  USER EXISTS
+        =================================================== */
         if (userExists) {
-            const { isDelete, isVerify } = userExists?.verification
-            if (isDelete) return res.status(400).json({ message: 'User is deleted!' });
-            if (isVerify) return res.status(400).json({ message: 'User is already verified!' });
-
-
-            // if (userExists.mobile_No) { 
-            //   const check = await NewUserOtp(userExists.first_name, userExists.last_name,userExists.mobile_No, otp)
-            //   console.log(check)
-            // } 
-            if (userExists.mobile_No) {
-                return res.status(201).json({ message: "resend otp to mobile", });
+            // 👉 already verified → go login
+            if (userExists.verification?.isVerify) {
+                return res.status(409).json({
+                    message: "User already verified",
+                    next: "LOGIN",
+                });
             }
 
-            otpVerificationUserMessage(userExists.first_name, userExists.email, otp)
-            return res.status(201).json({
-                message: mobile_No ? "User created & OTP sent to email + mobile" :
-                    "User created & OTP sent to email",
-            });
+            // 👉 NOT VERIFIED → resend OTP
+            userExists.verification.emailotp = otp;
+            userExists.verification.mobileotp = otp;
+            userExists.verification.otpExpires = otpExpires;
 
+            await userExists.save();
+
+            await otpVerificationUserMessage(
+                userExists.first_name,
+                userExists.email,
+                otp
+            );
+
+            if (userExists.mobile_No) {
+                await NewUserOtp(
+                    userExists.first_name,
+                    userExists.last_name,
+                    userExists.mobile_No,
+                    otp
+                );
+            }
+
+            return res.status(201).json({
+                message: "OTP resent",
+                user: { _id: userExists._id }, // 👈 IMPORTANT
+            });
         }
+
+        /* ===================================================
+            CASE 2️⃣  NEW USER CREATE
+        =================================================== */
 
         let profileImg: any = null;
 
         if (file) {
             profileImg = await upload_project_img(file.path);
         }
-        console.log(profileImg)
-
-        if (mobile_No) {
-            // await NewUserOtp(first_name, last_name, mobile_No, otp);
-        }
 
         const bcryptPassword = await bcrypt.hash(password, 10);
 
-        const otpExpires = Date.now() + 5 * 60 * 1000;
-        const verification = { emailotp: otp, mobileotp: otp, otpExpires: otpExpires }
+        const verification = {
+            emailotp: otp,
+            mobileotp: otp,
+            otpExpires,
+        };
+
         const user = await User.create({
-            username, first_name, last_name, email, country_code, password: bcryptPassword,
-            mobile_No, gender, profileImg, verification
+            username,
+            first_name,
+            last_name,
+            email,
+            country_code,
+            password: bcryptPassword,
+            mobile_No,
+            gender,
+            profileImg,
+            verification,
         });
 
-        // if(mobile_No){
-        //   const check = await NewUserOtp(userExists.first_name, userExists.last_name,mobile_No, otp)
-        //   console.log(check)
-        // }
+        // 🔥 SEND OTP
+        await otpVerificationUserMessage(first_name, email, otp);
 
-        res.status(201).json({
-            status: true, message: mobile_No ?
-                "User created & OTP sent to email + mobile" : "User created & OTP sent to email", user
+        if (mobile_No) {
+            await NewUserOtp(first_name, last_name, mobile_No, otp);
+        }
+
+        return res.status(201).json({
+            status: true,
+            message: "User created & OTP sent",
+            user: { _id: user._id }, // 👈 IMPORTANT FOR FRONTEND
         });
+    } catch (err: unknown) {
+        return errorHandler(err, res);
     }
-    catch (err: unknown) { return errorHandler(err, res); }
 };
+
 
 // above create_user if user send password and exiting mail or mobile number updated password
 
@@ -184,7 +224,7 @@ export const user_login = async (req: Request, res: Response) => {
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_User_SECRET_KEY as string, { expiresIn: '7d' });
 
-       
+
 
         res.status(200).json({ message: 'Login successful!', user, token });
     }
@@ -192,21 +232,187 @@ export const user_login = async (req: Request, res: Response) => {
     catch (err) { return errorHandler(err, res); }
 }
 
+export const user_signin_with_google = async (req: Request, res: Response) => {
+    try {
+        const googleUser = req.user as Profile;
+
+        const email = googleUser?.emails?.[0]?.value;
+        const name = googleUser?.displayName || "Google User";
+        const username = email?.split("@")[0] + crypto.randomBytes(3).toString("hex");
+
+        // ❌ EMAIL NOT FOUND
+        if (!email) {
+            return res.status(400).json({
+                message: "Email not found from Google",
+            });
+        }
+        let user = await User.findOne({ email });
+
+
+        if (!user) {
+            const nameParts = name.split(" ");
+            const first_name = nameParts[0] || "Google";
+            const last_name = nameParts.slice(1).join(" ") || "User";
+
+            const randomPassword = await bcrypt.hash(
+                crypto.randomBytes(20).toString("hex"),
+                10
+            );
+
+            user = await User.create({
+                username, first_name, last_name, email, avatar: "https://via.placeholder.com/150", country_code: "+91", password: randomPassword,
+                verification: {
+                    isVerify: true,
+                    isEmailVerified: true,
+                    isMobileVerified: false,
+                    isDelete: false,
+                    wrongAttempts: 0,
+                    lockUntil: null,
+                },
+            });
+
+
+        }
+        return res.redirect(
+            `http://localhost:5173/login`
+        );
+    } catch (err) {
+        return errorHandler(err, res);
+    }
+};
+
+
 export const user_login_with_goolge = async (req: Request, res: Response) => {
     try {
+        const googleUser = req.user as any;
+        const email: string | undefined = googleUser?.emails?.[0]?.value;
 
+        if (!email) {
+            return res.status(400).json({
+                message: "Email not found from Google",
+            });
+        }
+
+        // ✅ CHECK USER IN DB
+        const dbUser = await User.findOne({ email });
+
+        // ❌ NOT EXISTS → signup page
+        if (!dbUser) {
+            return res.redirect("http://localhost:5173/?next=signup&email=" + email);
+        }
+
+        // ❌ NOT VERIFIED → OTP PAGE
+        if (!dbUser.verification?.isVerify) {
+            return res.redirect(
+                `http://localhost:5173/otp?userId=${dbUser._id}`
+            );
+        }
+
+        // ✅ VERIFIED → DASHBOARD
+        return res.redirect(
+            `http://localhost:5173/home`
+        );
+
+    } catch (err) {
+        return errorHandler(err, res);
+    }
+};
+
+export const user_signin_with_github = async (req: Request, res: Response) => {
+  try {
+    const githubUser: any = req.user;
+
+    // 🔥 GitHub email kabhi _json me milta hai
+    const email =
+      githubUser?.emails?.[0]?.value || githubUser?._json?.email;
+
+    const name =
+      githubUser?.displayName ||
+      githubUser?.username ||
+      "Github User";
+
+    if (!email) {
+      return res.redirect("http://localhost:5173/login?error=no_email");
     }
 
-    catch (err) { return errorHandler(err, res); }
-}
+    // ⭐ Check existing user
+    let user = await User.findOne({ email });
+
+    // 🟡 Agar already exist → signup allow nahi
+    if (user) {
+      return res.redirect("http://localhost:5173/login?error=already_registered");
+    }
+
+    // ⭐ Username generate
+    const username =
+      email.split("@")[0] + crypto.randomBytes(3).toString("hex");
+
+    const nameParts = name.split(" ");
+    const first_name = nameParts[0] || "Github";
+    const last_name = nameParts.slice(1).join(" ") || "User";
+
+    const randomPassword = await bcrypt.hash(
+      crypto.randomBytes(20).toString("hex"),
+      10
+    );
+
+    // ✅ CREATE NEW USER
+    user = await User.create({
+      username,
+      first_name,
+      last_name,
+      email,
+      avatar: "https://via.placeholder.com/150",
+      country_code: "+91",
+      password: randomPassword,
+      verification: {
+        isVerify: true,
+        isEmailVerified: true,
+        isMobileVerified: false,
+        isDelete: false,
+        wrongAttempts: 0,
+        lockUntil: null,
+      },
+    });
+
+    /* =====================================================
+        ✅ SIGNUP SUCCESS
+    ===================================================== */
+
+    return res.redirect("http://localhost:5173/login");
+
+  } catch (err) {
+    return errorHandler(err, res);
+  }
+};
 
 export const user_login_with_github = async (req: Request, res: Response) => {
-    try {
+  try {
+    const githubUser: any = req.user;
 
+    const email =
+      githubUser?.emails?.[0]?.value || githubUser?._json?.email;
+
+    if (!email) {
+      return res.status(400).json({
+        message: "Email not found from GitHub",
+      });
     }
 
-    catch (err) { return errorHandler(err, res); }
-}
+    // 🔥 ONLY LOGIN — NO CREATE
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.redirect("http://localhost:5173/login?error=not_registered");
+    }
+
+    return res.redirect("http://localhost:5173/dashboard");
+
+  } catch (err) {
+    return errorHandler(err, res);
+  }
+};
+
 
 export const user_forget_password = async (req: Request, res: Response) => {
     try {
