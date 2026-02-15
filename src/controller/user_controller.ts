@@ -3,7 +3,7 @@ import User from "../model/user_model";
 import { errorHandler } from '../middleware/error_handling';
 import { NewUserOtp } from '../mobile/otp';
 import crypto from 'crypto';
-import { otpVerificationUserMessage, transporter } from "../mail/user_mail";
+import { otpVerificationUserMessage, forgotPasswordUserMessage,forgotPasswordthroughgmail } from "../mail/user_mail";
 import { upload_project_img, deleteImg } from "../image/upload";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -119,8 +119,6 @@ export const create_user = async (req: Request, res: Response) => {
         return errorHandler(err, res);
     }
 };
-
-
 // above create_user if user send password and exiting mail or mobile number updated password
 
 export const user_otp_verification = async (req: Request, res: Response) => {
@@ -232,26 +230,61 @@ export const user_login = async (req: Request, res: Response) => {
     catch (err) { return errorHandler(err, res); }
 }
 
-export const user_signin_with_google = async (req: Request, res: Response) => {
+export const user_google_auth = async (req: Request, res: Response) => {
     try {
         const googleUser = req.user as Profile;
 
         const email = googleUser?.emails?.[0]?.value;
         const name = googleUser?.displayName || "Google User";
-        const username = email?.split("@")[0] + crypto.randomBytes(3).toString("hex");
 
-        // ❌ EMAIL NOT FOUND
-        if (!email) {
-            return res.status(400).json({
-                message: "Email not found from Google",
-            });
-        }
+        if (!email) { return res.status(400).json({ message: "Email not found from Google", }); }
+
         let user = await User.findOne({ email });
 
-
         if (!user) {
+            const username = email.split("@")[0] + crypto.randomBytes(3).toString("hex");
             const nameParts = name.split(" ");
             const first_name = nameParts[0] || "Google";
+            const last_name = nameParts.slice(1).join(" ") || "User";
+            const randomPassword = await bcrypt.hash(crypto.randomBytes(20).toString("hex"), 10);
+
+            user = await User.create({
+                username, first_name, last_name, email, avatar: "https://via.placeholder.com/150", country_code: "+91", password: randomPassword,
+                verification: {
+                    isVerify: true,
+                    isEmailVerified: true,
+                    isMobileVerified: false,
+                    isDelete: false,
+                    wrongAttempts: 0,
+                    lockUntil: null,
+                },
+            });
+        }
+
+        return res.redirect(`http://localhost:5173/home`);
+
+    } catch (err) {
+        return errorHandler(err, res);
+    }
+};
+
+export const user_github_auth = async (req: Request, res: Response) => {
+    try {
+        const githubUser: any = req.user;
+
+        const email = githubUser?.emails?.[0]?.value || githubUser?._json?.email;
+
+        const name = githubUser?.displayName || githubUser?.username || "Github User";
+
+        if (!email) { return res.redirect("http://localhost:5173/login?error=no_email"); }
+
+        let user = await User.findOne({ email });
+
+        if (!user) {
+            const username = email.split("@")[0] + crypto.randomBytes(3).toString("hex");
+
+            const nameParts = name.split(" ");
+            const first_name = nameParts[0] || "Github";
             const last_name = nameParts.slice(1).join(" ") || "User";
 
             const randomPassword = await bcrypt.hash(
@@ -270,156 +303,257 @@ export const user_signin_with_google = async (req: Request, res: Response) => {
                     lockUntil: null,
                 },
             });
-
-
         }
-        return res.redirect(
-            `http://localhost:5173/login`
-        );
+
+        return res.redirect("http://localhost:5173/home");
+
     } catch (err) {
         return errorHandler(err, res);
     }
 };
 
-
-export const user_login_with_goolge = async (req: Request, res: Response) => {
+export const user_resend_otp = async (req: Request, res: Response) => {
     try {
-        const googleUser = req.user as any;
-        const email: string | undefined = googleUser?.emails?.[0]?.value;
+        const { userId } = req.params;
 
-        if (!email) {
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
+
+        if (user.verification.isVerify) {
+            return res.status(400).json({ message: "User already verified!" });
+        }
+
+        const emailOtp = Math.floor(1000 + Math.random() * 9000);
+        const mobileOtp = Math.floor(1000 + Math.random() * 9000);
+
+        await User.findByIdAndUpdate(userId, {
+            $set: {
+                "verification.emailotp": emailOtp,
+                "verification.mobileotp": mobileOtp,
+                "verification.userOtp": emailOtp,
+                "verification.otpExpiry": new Date(Date.now() + 5 * 60 * 1000),
+            },
+        });
+
+        console.log("New Email OTP:", emailOtp);
+        console.log("New Mobile OTP:", mobileOtp);
+
+        return res.status(200).json({
+            message: "OTP resent successfully",
+        });
+
+    } catch (err) {
+        return errorHandler(err, res);
+    }
+};
+
+export const user_update_password = async (req: Request, res: Response) => {
+    try {
+        const { email, username, mobile_No, oldPassword, newPassword } = req.body;
+
+        if (!email && !username && !mobile_No) {
             return res.status(400).json({
-                message: "Email not found from Google",
+                message: "Provide email, username, or mobile number",
             });
         }
 
-        // ✅ CHECK USER IN DB
-        const dbUser = await User.findOne({ email });
-
-        // ❌ NOT EXISTS → signup page
-        if (!dbUser) {
-            return res.redirect("http://localhost:5173/?next=signup&email=" + email);
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({
+                message: "Old password and new password required",
+            });
         }
 
-        // ❌ NOT VERIFIED → OTP PAGE
-        if (!dbUser.verification?.isVerify) {
-            return res.redirect(
-                `http://localhost:5173/otp?userId=${dbUser._id}`
-            );
+        // ✅ Build query safely
+        const query: any = {};
+        if (email) query.email = email;
+        if (username) query.username = username;
+        if (mobile_No) query.mobile_No = mobile_No;
+
+        const user = await User.findOne(query).select("+password");
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
         }
 
-        // ✅ VERIFIED → DASHBOARD
-        return res.redirect(
-            `http://localhost:5173/home`
-        );
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+
+        if (!isMatch) {
+            return res.status(400).json({ message: "Old password is incorrect" });
+        }
+
+        user.password = await bcrypt.hash(newPassword, 10);
+
+        await user.save();
+
+        return res.status(200).json({
+            message: "Password updated successfully",
+        });
 
     } catch (err) {
         return errorHandler(err, res);
     }
 };
 
-export const user_signin_with_github = async (req: Request, res: Response) => {
-  try {
-    const githubUser: any = req.user;
+export const update_user_text_info = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const { first_name, last_name, country_code, gender, bio } = req.body;
 
-    // 🔥 GitHub email kabhi _json me milta hai
-    const email =
-      githubUser?.emails?.[0]?.value || githubUser?._json?.email;
+        const user = await User.findById(userId);
 
-    const name =
-      githubUser?.displayName ||
-      githubUser?.username ||
-      "Github User";
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
 
-    if (!email) {
-      return res.redirect("http://localhost:5173/login?error=no_email");
+        if (first_name !== undefined) user.first_name = first_name;
+        if (last_name !== undefined) user.last_name = last_name;
+        if (country_code !== undefined) user.country_code = country_code;
+        if (gender !== undefined) user.gender = gender;
+        if (bio !== undefined) user.bio = bio;
+
+        await user.save();
+
+        return res.status(200).json({
+            message: "User text info updated successfully",
+            user: user.toJSON(),
+        });
+
+    } catch (err) {
+        return errorHandler(err, res);
     }
-
-    // ⭐ Check existing user
-    let user = await User.findOne({ email });
-
-    // 🟡 Agar already exist → signup allow nahi
-    if (user) {
-      return res.redirect("http://localhost:5173/login?error=already_registered");
-    }
-
-    // ⭐ Username generate
-    const username =
-      email.split("@")[0] + crypto.randomBytes(3).toString("hex");
-
-    const nameParts = name.split(" ");
-    const first_name = nameParts[0] || "Github";
-    const last_name = nameParts.slice(1).join(" ") || "User";
-
-    const randomPassword = await bcrypt.hash(
-      crypto.randomBytes(20).toString("hex"),
-      10
-    );
-
-    // ✅ CREATE NEW USER
-    user = await User.create({
-      username,
-      first_name,
-      last_name,
-      email,
-      avatar: "https://via.placeholder.com/150",
-      country_code: "+91",
-      password: randomPassword,
-      verification: {
-        isVerify: true,
-        isEmailVerified: true,
-        isMobileVerified: false,
-        isDelete: false,
-        wrongAttempts: 0,
-        lockUntil: null,
-      },
-    });
-
-    /* =====================================================
-        ✅ SIGNUP SUCCESS
-    ===================================================== */
-
-    return res.redirect("http://localhost:5173/login");
-
-  } catch (err) {
-    return errorHandler(err, res);
-  }
 };
 
-export const user_login_with_github = async (req: Request, res: Response) => {
-  try {
-    const githubUser: any = req.user;
+export const update_user_profile_image = async (req: Request, res: Response) => {
+    try {
+        const { userId } = req.params;
+        const file = req.file;
 
-    const email =
-      githubUser?.emails?.[0]?.value || githubUser?._json?.email;
+        if (!file) {
+            return res.status(400).json({ message: "Image file required!" });
+        }
 
-    if (!email) {
-      return res.status(400).json({
-        message: "Email not found from GitHub",
-      });
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
+
+        // ✅ old image delete
+        if (user.profileImg?.public_id) {
+            await deleteImg(user.profileImg.public_id);
+        }
+
+        // ✅ upload new image
+        const uploadedImg = await upload_project_img(file.path);
+
+        user.profileImg = {
+            public_id: uploadedImg.public_id,
+            secure_url: uploadedImg.secure_url,
+        };
+
+        await user.save();
+
+        return res.status(200).json({
+            message: "Profile image updated successfully",
+            user: user.toJSON(),
+        });
+
+    } catch (err) {
+        return errorHandler(err, res);
     }
-
-    // 🔥 ONLY LOGIN — NO CREATE
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      return res.redirect("http://localhost:5173/login?error=not_registered");
-    }
-
-    return res.redirect("http://localhost:5173/dashboard");
-
-  } catch (err) {
-    return errorHandler(err, res);
-  }
 };
 
 
 export const user_forget_password = async (req: Request, res: Response) => {
     try {
+        const { userId } = req.params;
+        const { email, username } = req.body;
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
+
+        if (!email && !username) {
+            return res.status(400).json({
+                message: "Provide email or username",
+            });
+        }
+
+        if (user.verification.isDelete) {
+            return res.status(400).json({ message: 'User is deleted!' });
+        }
+        if (user.verification.isVerify === false) {
+            return res.status(400).json({ message: 'User is not verified!' });
+        }
+
+        const otp = crypto.randomInt(1000, 10000);
+        const otpExpiry = Date.now() + 5 * 60 * 1000;
+        user.verification.forgotPasswordOTP = otp;
+        user.verification.forgotPasswordOTPExpiry = otpExpiry;
+        await user.save();
+
+        forgotPasswordUserMessage(
+            user.first_name,
+            user.email,
+            otp,
+        );
+
+        return res.status(200).json({
+            message: "Forgot password OTP sent to email",
+        });
 
     }
 
     catch (err) { return errorHandler(err, res); }
 }
+
+export const user_forgot_password_gmail = async (req: Request, res: Response) => {
+    try {
+        const { email, username } = req.body;
+
+        const user = await User.findOne({
+            $or: [{ email }, { username }]
+        });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
+
+        if (user.verification.isDelete) {
+            return res.status(400).json({ message: "User is deleted!" });
+        }
+
+        if (!user.verification.isVerify) {
+            return res.status(400).json({ message: "User is not verified!" });
+        }
+        const resetToken = jwt.sign(
+            { userId: user._id },
+            process.env.RESET_PASSWORD_SECRET!,
+            { expiresIn: "10m" }
+        );
+        
+        user.verification.forgotPassswordToken = resetToken;
+        user.verification.forgotPasswordExpire = (Date.now() + 10 * 60 * 1000);
+
+        await user.save();
+
+        await forgotPasswordthroughgmail(
+            user.first_name,
+            user.email,
+            resetToken
+        );
+
+        return res.status(200).json({
+            message: "Reset link sent to email",
+        });
+
+    } catch (err) {
+        return errorHandler(err, res);
+    }
+};
 // send mail link reset pasword click link open website page change password , link expiry date if
 // link expire not open website page change password show error link expire

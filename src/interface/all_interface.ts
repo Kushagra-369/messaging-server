@@ -38,6 +38,11 @@ export interface IUser extends Document {
       otpExpires: number ,
       wrongAttempts: number,
       lockUntil: Date | null,
+      forgotPasswordOTP: number | null,
+      forgotPasswordVerification: boolean,
+      forgotPasswordOTPExpiry: number | null,
+      forgotPassswordToken: string | null,
+      forgotPasswordExpire: number | null,
       },
 
    /* =======================

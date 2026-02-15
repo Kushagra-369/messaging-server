@@ -39,10 +39,17 @@ const UserSchema: Schema<IUser> = new Schema(
       isVerify: { type: Boolean, default: false },
       emailotp: { type: Number },
       mobileotp: { type: Number },
-      otpExpires: { type: Number, default: null },
+      userOtp : { type: Number, default: null },
+      otpExpiry: { type: Date, default: null },
       wrongAttempts: { type: Number, default: 0 },
       lockUntil: { type: Date, default: null },
+      forgotPasswordOTP: { type: Number, default: null },
+      forgotPasswordVerification: { type: Boolean, default: false },
+      forgotPasswordOTPExpiry: { type: Number, default: null },
+      forgotPassswordToken: { type: String, default: null },
+      forgotPasswordExpire: { type: Number, default: null },
     },
+
 
     contacts: [{ type: Schema.Types.ObjectId, ref: "User", },],
 
