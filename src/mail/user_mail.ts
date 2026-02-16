@@ -62,7 +62,7 @@ export const forgotPasswordUserMessage = async (name: String, email: String, otp
 export const forgotPasswordthroughgmail = async (name: string,email: string,token: string) => {
     try {
 
-        const resetLink = `http://localhost:5173/reset-password?token=${token}`;
+        const resetLink = `http://localhost:5173/forgot_password?token=${token}`;
 
         await transporter.sendMail({
             from: `"Messaging App" <${process.env.NodeMailerUser}>`,

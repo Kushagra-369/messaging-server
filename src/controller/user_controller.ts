@@ -3,7 +3,7 @@ import User from "../model/user_model";
 import { errorHandler } from '../middleware/error_handling';
 import { NewUserOtp } from '../mobile/otp';
 import crypto from 'crypto';
-import { otpVerificationUserMessage, forgotPasswordUserMessage,forgotPasswordthroughgmail } from "../mail/user_mail";
+import { otpVerificationUserMessage, forgotPasswordUserMessage, forgotPasswordthroughgmail } from "../mail/user_mail";
 import { upload_project_img, deleteImg } from "../image/upload";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -466,51 +466,6 @@ export const update_user_profile_image = async (req: Request, res: Response) => 
     }
 };
 
-
-export const user_forget_password = async (req: Request, res: Response) => {
-    try {
-        const { userId } = req.params;
-        const { email, username } = req.body;
-        const user = await User.findById(userId);
-
-        if (!user) {
-            return res.status(404).json({ message: "User not found!" });
-        }
-
-        if (!email && !username) {
-            return res.status(400).json({
-                message: "Provide email or username",
-            });
-        }
-
-        if (user.verification.isDelete) {
-            return res.status(400).json({ message: 'User is deleted!' });
-        }
-        if (user.verification.isVerify === false) {
-            return res.status(400).json({ message: 'User is not verified!' });
-        }
-
-        const otp = crypto.randomInt(1000, 10000);
-        const otpExpiry = Date.now() + 5 * 60 * 1000;
-        user.verification.forgotPasswordOTP = otp;
-        user.verification.forgotPasswordOTPExpiry = otpExpiry;
-        await user.save();
-
-        forgotPasswordUserMessage(
-            user.first_name,
-            user.email,
-            otp,
-        );
-
-        return res.status(200).json({
-            message: "Forgot password OTP sent to email",
-        });
-
-    }
-
-    catch (err) { return errorHandler(err, res); }
-}
-
 export const user_forgot_password_gmail = async (req: Request, res: Response) => {
     try {
         const { email, username } = req.body;
@@ -533,11 +488,10 @@ export const user_forgot_password_gmail = async (req: Request, res: Response) =>
         const resetToken = jwt.sign(
             { userId: user._id },
             process.env.RESET_PASSWORD_SECRET!,
-            { expiresIn: "10m" }
+            { expiresIn: "5m" }
         );
-        
+
         user.verification.forgotPassswordToken = resetToken;
-        user.verification.forgotPasswordExpire = (Date.now() + 10 * 60 * 1000);
 
         await user.save();
 
@@ -555,5 +509,44 @@ export const user_forgot_password_gmail = async (req: Request, res: Response) =>
         return errorHandler(err, res);
     }
 };
-// send mail link reset pasword click link open website page change password , link expiry date if
-// link expire not open website page change password show error link expire
+
+export const forgotten_update_password = async (req: Request, res: Response) => {
+    try {
+        const { newPassword } = req.body;
+        const { token } = req.params;
+
+        if (!newPassword) {
+            return res.status(400).json({ message: "New password is required!" });
+        }
+
+        if (!token) {
+            return res.status(400).json({ message: "Token missing!" });
+        }
+
+        // JWT verify karo
+        const decoded: any = jwt.verify(token, process.env.RESET_PASSWORD_SECRET!);
+
+        const user = await User.findById(decoded.userId);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found!" });
+        }
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+
+
+        console.log("DECODED TOKEN =", decoded);
+
+
+        return res.status(200).json({
+            message: "Password updated successfully",
+        });
+
+    } catch (err) {
+        console.log("JWT ERROR =", err); // 👈 ADD THIS
+        return errorHandler(err, res);
+    }
+
+};
+

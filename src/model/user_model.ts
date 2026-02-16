@@ -36,7 +36,7 @@ const UserSchema: Schema<IUser> = new Schema(
       isEmailVerified: { type: Boolean, default: false },
       isMobileVerified: { type: Boolean, default: false },
       isDelete: { type: Boolean, default: false },
-      isVerify: { type: Boolean, default: false },
+      isVerify: { type: Boolean, default: false }, 
       emailotp: { type: Number },
       mobileotp: { type: Number },
       userOtp : { type: Number, default: null },
@@ -48,6 +48,7 @@ const UserSchema: Schema<IUser> = new Schema(
       forgotPasswordOTPExpiry: { type: Number, default: null },
       forgotPassswordToken: { type: String, default: null },
       forgotPasswordExpire: { type: Number, default: null },
+      
     },
 
 
@@ -85,8 +86,6 @@ const UserSchema: Schema<IUser> = new Schema(
   { timestamps: true }
 );
 
-UserSchema.index({ email: 1 });
-UserSchema.index({ username: 1 });
 
 const User: Model<IUser> =
   mongoose.models.User || mongoose.model<IUser>("User", UserSchema);

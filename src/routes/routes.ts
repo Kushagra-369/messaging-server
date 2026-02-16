@@ -5,7 +5,7 @@ import passport from "../config/passport";
 
 const router = express.Router();
 
-import { create_user, user_otp_verification, user_login, user_google_auth, user_github_auth,user_resend_otp,user_update_password  } from "../controller/user_controller";
+import { create_user, user_otp_verification, user_login, user_google_auth, user_github_auth,user_resend_otp,user_update_password,user_forgot_password_gmail , forgotten_update_password } from "../controller/user_controller";
 
 const upload = multer();
 
@@ -39,5 +39,7 @@ router.get(
 
 
 
+router.post("/forgot_password_gmail", upload.none(), user_forgot_password_gmail);
+router.post("/forgotten_update_password/:token", upload.none(), forgotten_update_password);
 
 export default router;

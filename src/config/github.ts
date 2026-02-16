@@ -21,4 +21,3 @@ passport.use(
     }
   )
 );
-console.log("GITHUB STRATEGY LOADED");
